@@ -36,7 +36,17 @@ type Invoice = {
   paid: number
 }
 
-type Payment = { method: string; amount: number }
+type Payment = {
+  method: string
+  amount: number
+  issueDate?: string
+  paymentDate?: string
+  issuingBank?: string
+  issuerTaxId?: string
+  eCheq?: 'Sí' | 'No'
+  concept?: string
+  receiptName?: string
+}
 
 const initialInvoices: Invoice[] = [
   { id: '1', number: 'FC A 0001-00051377', client: 'Blossom San Fernando (Diocla SRL)', taxId: '30-71683193-7', due: '05/09/2026', amount: 571707, paid: 0 },
@@ -77,6 +87,9 @@ export default function Page() {
   }
 
   function addPayment() { setPayments((current) => [...current, { method: 'Efectivo', amount: 0 }]) }
+  function updatePayment(index: number, changes: Partial<Payment>) {
+    setPayments((current) => current.map((item, i) => i === index ? { ...item, ...changes } : item))
+  }
   function savePayment() {
     let remaining = paidIn
     setInvoices((current) => current.map((invoice) => {
@@ -111,7 +124,15 @@ export default function Page() {
           </div>
         </section>
       </div>
-      {showPayment && <div className="modal-backdrop"><div className="payment-modal"><div className="modal-header"><div><p className="eyebrow">Nuevo movimiento</p><h2>Registrar cobro</h2><p>Imputá uno o varios pagos a las facturas del cliente.</p></div><button onClick={() => setShowPayment(false)} className="icon-button"><X className="size-5" /></button></div><div className="modal-body"><label className="field-label">Cliente<select value={client} onChange={(event) => setClient(event.target.value)}><option>Todos los clientes</option><option>Blossom San Fernando (Diocla SRL)</option><option>Academia Nacional de Bellas Artes</option></select></label><div className="section-heading"><span>Medios de pago</span><button onClick={addPayment}>+ Agregar otro pago</button></div>{payments.map((payment, index) => <div className="payment-row" key={`${payment.method}-${index}`}><select value={payment.method} onChange={(event) => setPayments((current) => current.map((item, i) => i === index ? { ...item, method: event.target.value } : item))}>{methods.map((method) => <option key={method}>{method}</option>)}</select><div className="amount-input"><span>$</span><input type="number" value={payment.amount} onChange={(event) => setPayments((current) => current.map((item, i) => i === index ? { ...item, amount: Number(event.target.value) } : item))} /></div>{payments.length > 1 && <button onClick={() => setPayments((current) => current.filter((_, i) => i !== index))} className="remove-payment"><X className="size-4" /></button>}</div>)}<div className="section-heading mt-6"><span>Facturas a cancelar</span><button onClick={() => setSelected(visible.map((invoice) => invoice.id))}>Seleccionar todas</button></div><div className="invoice-picker">{selectedInvoices.length ? selectedInvoices.map((invoice) => <div className="picker-row" key={invoice.id}><input type="checkbox" checked onChange={() => toggleInvoice(invoice.id)} /><span>{invoice.number}</span><span className="ml-auto">{money(invoice.amount - invoice.paid)}</span></div>) : <p className="empty-picker">Seleccioná facturas desde la tabla para imputar el pago.</p>}</div><div className="allocation"><div><span>Pagado</span><strong>{money(paidIn)}</strong></div><div><span>Para cancelar</span><strong className="text-primary">{money(applied)}</strong></div><div><span>Remanente / saldo a favor</span><strong className={remainder ? 'text-success' : ''}>{money(remainder)}</strong></div></div></div><div className="modal-footer"><Button variant="outline" onClick={() => setShowPayment(false)}>Cancelar</Button><Button onClick={savePayment} disabled={!selectedInvoices.length || !paidIn}>{saved ? 'Cobro guardado' : 'Confirmar e imputar'}</Button></div></div></div>}
+      {showPayment && <div className="modal-backdrop"><div className="payment-modal"><div className="modal-header"><div><p className="eyebrow">Nuevo movimiento</p><h2>Registrar cobro</h2><p>Imputá uno o varios pagos a las facturas del cliente.</p></div><button onClick={() => setShowPayment(false)} className="icon-button"><X className="size-5" /></button></div><div className="modal-body"><label className="field-label">Cliente<select value={client} onChange={(event) => setClient(event.target.value)}><option>Todos los clientes</option><option>Blossom San Fernando (Diocla SRL)</option><option>Academia Nacional de Bellas Artes</option></select></label><div className="section-heading"><span>Medios de pago</span><button onClick={addPayment}>+ Agregar otro pago</button></div>{payments.map((payment, index) => <div className="payment-row" key={`${payment.method}-${index}`}><select value={payment.method} onChange={(event) => setPayments((current) => current.map((item, i) => i === index ? { ...item, method: event.target.value } : item))}>{methods.map((method) => <option key={method}>{method}</option>)}</select><div className="amount-input"><span>$</span><input type="number" value={payment.amount} onChange={(event) => setPayments((current) => current.map((item, i) => i === index ? { ...item, amount: Number(event.target.value) } : item))} /></div>{payments.length > 1 && <button onClick={() => setPayments((current) => current.filter((_, i) => i !== index))} className="remove-payment"><X className="size-4" /></button>}{payment.method === 'Cheque' && <div className="cheque-details">
+  <label className="field-label">Fecha de emisión<input type="date" value={payment.issueDate ?? ''} onChange={(event) => updatePayment(index, { issueDate: event.target.value })} /></label>
+  <label className="field-label">Fecha de pago<input type="date" value={payment.paymentDate ?? ''} onChange={(event) => updatePayment(index, { paymentDate: event.target.value })} /></label>
+  <label className="field-label">Banco emisor<input value={payment.issuingBank ?? ''} onChange={(event) => updatePayment(index, { issuingBank: event.target.value })} placeholder="Nombre del banco" /></label>
+  <label className="field-label">CUIT emisor<input value={payment.issuerTaxId ?? ''} onChange={(event) => updatePayment(index, { issuerTaxId: event.target.value })} placeholder="00-00000000-0" /></label>
+  <label className="field-label">E-Cheq<select value={payment.eCheq ?? 'No'} onChange={(event) => updatePayment(index, { eCheq: event.target.value as 'Sí' | 'No' })}><option>No</option><option>Sí</option></select></label>
+  <label className="field-label cheque-concept">Concepto<input value={payment.concept ?? ''} onChange={(event) => updatePayment(index, { concept: event.target.value })} placeholder="Concepto del cheque" /></label>
+  <label className="field-label cheque-upload">Adjuntar comprobante<input type="file" accept="image/*,.pdf" onChange={(event) => updatePayment(index, { receiptName: event.target.files?.[0]?.name ?? '' })} />{payment.receiptName && <span className="text-xs text-muted-foreground">{payment.receiptName}</span>}</label>
+</div>}</div>)}<div className="section-heading mt-6"><span>Facturas a cancelar</span><button onClick={() => setSelected(visible.map((invoice) => invoice.id))}>Seleccionar todas</button></div><div className="invoice-picker">{selectedInvoices.length ? selectedInvoices.map((invoice) => <div className="picker-row" key={invoice.id}><input type="checkbox" checked onChange={() => toggleInvoice(invoice.id)} /><span>{invoice.number}</span><span className="ml-auto">{money(invoice.amount - invoice.paid)}</span></div>) : <p className="empty-picker">Seleccioná facturas desde la tabla para imputar el pago.</p>}</div><div className="allocation"><div><span>Pagado</span><strong>{money(paidIn)}</strong></div><div><span>Para cancelar</span><strong className="text-primary">{money(applied)}</strong></div><div><span>Remanente / saldo a favor</span><strong className={remainder ? 'text-success' : ''}>{money(remainder)}</strong></div></div></div><div className="modal-footer"><Button variant="outline" onClick={() => setShowPayment(false)}>Cancelar</Button><Button onClick={savePayment} disabled={!selectedInvoices.length || !paidIn}>{saved ? 'Cobro guardado' : 'Confirmar e imputar'}</Button></div></div></div>}
     </main>
   )
 }

@@ -1,15 +1,119 @@
 'use client'
-import { useState } from 'react'
-import * as XLSX from 'xlsx'
-import { Download, X } from 'lucide-react'
+
+import { useMemo, useState } from 'react'
+import {
+  ArrowDownToLine,
+  Bell,
+  CalendarDays,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  CircleDollarSign,
+  ClipboardList,
+  CreditCard,
+  FileText,
+  Filter,
+  HandCoins,
+  Home,
+  Menu,
+  MoreHorizontal,
+  Search,
+  UserRound,
+  Users,
+  WalletCards,
+  X,
+} from 'lucide-react'
+
 import { Button } from '@/components/ui/button'
 
-const invoices = [{id:'1',client:'Blossom San Fernando (Diocla SRL)',number:'FC A 0001-00051377',date:'2026-09-05',amount:571707},{id:'2',client:'Academia Nacional de Bellas Artes',number:'FC B 0001-00051401',date:'2026-08-28',amount:373650},{id:'3',client:'The Coffee Store Quilmes TCS',number:'FC A 0001-00051095',date:'2026-08-13',amount:621200}]
-const methods = ['Depósito bancario','Efectivo','Transferencia','Cheque','Tarjeta de crédito']
-const money = (n:number) => new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS'}).format(n)
-export default function Page(){
- const [open,setOpen]=useState(false),[method,setMethod]=useState('Transferencia'),[from,setFrom]=useState('2026-08-01'),[to,setTo]=useState('2026-09-30'),[saved,setSaved]=useState(false)
- const [cheque,setCheque]=useState({issueDate:'',paymentDate:'',bank:'',taxId:'',echeq:'No',concept:'',fileName:''})
- function exportExcel(){const rows=invoices.filter(i=>i.date>=from&&i.date<=to).map(i=>({Cliente:i.client,Comprobante:i.number,Vencimiento:i.date,Importe:i.amount,Estado:'Cobrado'}));const ws=XLSX.utils.json_to_sheet(rows);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Cobros');XLSX.writeFile(wb,`cobros-${from}-${to}.xlsx`)}
- return <main className="min-h-screen bg-background p-6 text-foreground md:p-10"><header className="mb-8 flex items-center justify-between"><div><p className="text-sm text-muted-foreground">Administración / Cobranza</p><h1 className="mt-2 text-3xl font-semibold">Cobranza</h1><p className="mt-1 text-muted-foreground">Gestioná pagos, imputaciones y saldos de tus clientes.</p></div><Button onClick={()=>setOpen(true)}>Registrar cobro</Button></header><div className="toolbar mb-6 flex flex-wrap items-center gap-3"><input type="date" value={from} onChange={e=>setFrom(e.target.value)} aria-label="Fecha desde"/><span>hasta</span><input type="date" value={to} onChange={e=>setTo(e.target.value)} aria-label="Fecha hasta"/><Button variant="outline" onClick={exportExcel}><Download data-icon="inline-start"/> Descargar Excel</Button></div><section className="table-card"><div className="table-scroll"><table><thead><tr><th>Cliente</th><th>Comprobante</th><th>Vencimiento</th><th className="text-right">Importe</th><th>Estado</th></tr></thead><tbody>{invoices.map(i=><tr key={i.id}><td className="font-medium">{i.client}</td><td>{i.number}</td><td>{i.date}</td><td className="text-right">{money(i.amount)}</td><td><span className="status warning">Pendiente</span></td></tr>)}</tbody></table></div></section>{open&&<div className="modal-backdrop"><div className="payment-modal"><div className="modal-header"><div><p className="eyebrow">Nuevo movimiento</p><h2>Registrar cobro</h2></div><button className="icon-button" onClick={()=>setOpen(false)} aria-label="Cerrar"><X/></button></div><div className="modal-body"><label className="field-label">Medio de pago<select value={method} onChange={e=>setMethod(e.target.value)}>{methods.map(m=><option key={m}>{m}</option>)}</select></label>{method==='Cheque'&&<div className="cheque-fields"><h3>Datos del cheque</h3><div className="cheque-grid">{[['Fecha de emisión','issueDate','date'],['Fecha de pago','paymentDate','date'],['Banco emisor','bank','text'],['CUIT emisor','taxId','text'],['Concepto','concept','text']].map(([label,key,type])=><label className="field-label" key={key}>{label}<input type={type} value={cheque[key as keyof typeof cheque]} onChange={e=>setCheque({...cheque,[key]:e.target.value})}/></label>)}<label className="field-label">E-Cheq<select value={cheque.echeq} onChange={e=>setCheque({...cheque,echeq:e.target.value})}><option>Sí</option><option>No</option></select></label><label className="field-label file-field">Adjuntar comprobante<input type="file" accept=".pdf,image/*" onChange={e=>setCheque({...cheque,fileName:e.target.files?.[0]?.name||''})}/><span>{cheque.fileName||'PDF o imagen · máximo 10 MB'}</span></label></div></div>}<label className="field-label">Importe<input type="number" defaultValue="0"/></label></div><div className="modal-footer"><Button variant="outline" onClick={()=>setOpen(false)}>Cancelar</Button><Button onClick={()=>{setSaved(true);setTimeout(()=>setOpen(false),700)}}>{saved?'Cobro guardado':'Confirmar cobro'}</Button></div></div></div>}</main>
+type Invoice = {
+  id: string
+  number: string
+  client: string
+  taxId: string
+  due: string
+  amount: number
+  paid: number
 }
+
+type Payment = { method: string; amount: number }
+
+const initialInvoices: Invoice[] = [
+  { id: '1', number: 'FC A 0001-00051377', client: 'Blossom San Fernando (Diocla SRL)', taxId: '30-71683193-7', due: '05/09/2026', amount: 571707, paid: 0 },
+  { id: '2', number: 'FC B 0001-00051401', client: 'Academia Nacional de Bellas Artes', taxId: '30-71683193-7', due: '28/08/2026', amount: 373650, paid: 0 },
+  { id: '3', number: 'FC A 0001-00051215', client: 'Aguilera Verón Paul Nicolás', taxId: '20-32156480-9', due: '18/08/2026', amount: 56250, paid: 0 },
+  { id: '4', number: 'FC A 0001-00051095', client: 'The Coffee Store Quilmes TCS', taxId: '30-70928411-2', due: '13/08/2026', amount: 621200, paid: 0 },
+  { id: '5', number: 'FC B 0001-00051175', client: 'Heladería Trevi San Miguel', taxId: '30-71132041-8', due: '16/08/2026', amount: 215600, paid: 0 },
+  { id: '6', number: 'FC A 0001-00051263', client: 'Volta Coffee Store Banfield', taxId: '30-72889012-5', due: '20/08/2026', amount: 394960, paid: 0 },
+]
+
+const money = (value: number) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 2 }).format(value)
+const methods = ['Depósito bancario', 'Efectivo', 'Transferencia', 'Cheque', 'Tarjeta de crédito']
+
+export default function Page() {
+  const [invoices, setInvoices] = useState(initialInvoices)
+  const [selected, setSelected] = useState<string[]>(['1', '2'])
+  const [query, setQuery] = useState('')
+  const [tab, setTab] = useState('Pendientes')
+  const [showPayment, setShowPayment] = useState(false)
+  const [payments, setPayments] = useState<Payment[]>([{ method: 'Transferencia', amount: 610000 }])
+  const [client, setClient] = useState('Todos los clientes')
+  const [saved, setSaved] = useState(false)
+
+  const visible = useMemo(() => invoices.filter((invoice) => {
+    const matchesQuery = `${invoice.client} ${invoice.number}`.toLowerCase().includes(query.toLowerCase())
+    const balance = invoice.amount - invoice.paid
+    const matchesTab = tab === 'Todos' || (tab === 'Pendientes' && balance > 0) || (tab === 'Morosos' && balance > 0 && invoice.due < '02/09/2026')
+    return matchesQuery && matchesTab
+  }), [invoices, query, tab])
+  const totalDebt = invoices.reduce((sum, invoice) => sum + invoice.amount - invoice.paid, 0)
+  const selectedInvoices = invoices.filter((invoice) => selected.includes(invoice.id))
+  const applied = Math.min(payments.reduce((sum, payment) => sum + payment.amount, 0), selectedInvoices.reduce((sum, invoice) => sum + invoice.amount - invoice.paid, 0))
+  const paidIn = payments.reduce((sum, payment) => sum + payment.amount, 0)
+  const remainder = Math.max(paidIn - applied, 0)
+
+  function toggleInvoice(id: string) {
+    setSelected((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id])
+  }
+
+  function addPayment() { setPayments((current) => [...current, { method: 'Efectivo', amount: 0 }]) }
+  function savePayment() {
+    let remaining = paidIn
+    setInvoices((current) => current.map((invoice) => {
+      if (!selected.includes(invoice.id) || remaining <= 0) return invoice
+      const balance = invoice.amount - invoice.paid
+      const allocation = Math.min(balance, remaining)
+      remaining -= allocation
+      return { ...invoice, paid: invoice.paid + allocation }
+    }))
+    setSaved(true)
+    setTimeout(() => { setShowPayment(false); setSaved(false) }, 1100)
+  }
+
+  return (
+    <main className="min-h-screen bg-background text-foreground">
+      <header className="topbar flex items-center justify-between px-6">
+        <div className="flex items-center gap-5"><span className="text-xl font-semibold tracking-tight">Administración</span><Menu className="size-6" /></div>
+        <div className="flex items-center gap-6"><button className="company-select">DEPCSUITE SA <ChevronDown className="size-4" /></button><Bell className="size-5 text-muted-foreground" /><div className="hidden items-center gap-2 text-sm font-medium text-muted-foreground md:flex"><UserRound className="size-5" /> Nelson Daniel Tarche</div></div>
+      </header>
+      <div className="flex min-h-[calc(100vh-64px)]">
+        <aside className="sidebar hidden w-60 shrink-0 flex-col gap-2 p-4 lg:flex">
+          <div className="mb-5 px-3 text-xs font-semibold uppercase tracking-[0.18em] text-sidebar-muted">Módulos</div>
+          {[[Home, 'Inicio'], [ClipboardList, 'Dashboard'], [FileText, 'Pedidos'], [CircleDollarSign, 'Productos'], [Users, 'Clientes'], [WalletCards, 'Ventas'], [CreditCard, 'Pagos'], [HandCoins, 'Cobranza'], [FileText, 'Cheques'], [Home, 'Contratos']].map(([Icon, label]) => <button key={label as string} className={`side-item ${label === 'Cobranza' ? 'active' : ''}`}><Icon className="size-[18px]" /> <span>{label as string}</span>{label !== 'Inicio' && <ChevronRight className="ml-auto size-4 opacity-60" />}</button>)}
+        </aside>
+        <section className="flex-1 overflow-hidden">
+          <div className="mx-auto max-w-[1500px] p-5 md:p-8">
+            <div className="mb-7 flex flex-wrap items-end justify-between gap-4"><div><div className="mb-2 flex items-center gap-2 text-sm text-muted-foreground"><span>Inicio</span><ChevronRight className="size-4" /><span className="text-primary">Cobranza</span></div><h1 className="text-3xl font-semibold tracking-tight">Cobranza</h1><p className="mt-1 text-sm text-muted-foreground">Gestioná pagos, imputaciones y saldos a favor de tus clientes.</p></div><Button onClick={() => setShowPayment(true)} className="h-11 gap-2"><HandCoins className="size-4" data-icon="inline-start" /> Registrar cobro</Button></div>
+            <div className="summary-grid mb-6"><Summary label="Pendiente de cobro" value={money(totalDebt)} detail="6 facturas abiertas" tone="navy" icon={CircleDollarSign} /><Summary label="Cobrado este mes" value={money(1500000)} detail="+12,4% vs. mes anterior" tone="blue" icon={Check} /><Summary label="Saldos a favor" value={money(6100)} detail="3 remanentes activos" tone="gold" icon={WalletCards} /><Summary label="Clientes morosos" value="8" detail="Requieren seguimiento" tone="red" icon={Users} /></div>
+            <div className="filter-panel mb-6"><div className="flex flex-wrap items-center gap-3"><div className="search-wrap"><Search className="size-4 text-muted-foreground" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar cliente o factura..." /></div><select value={client} onChange={(event) => setClient(event.target.value)} className="filter-select"><option>Todos los clientes</option><option>Blossom San Fernando</option><option>The Coffee Store Quilmes</option></select><button className="date-filter"><CalendarDays className="size-4" /> 01/08/2026 — 30/09/2026</button><Button variant="outline" className="gap-2"><Filter className="size-4" data-icon="inline-start" /> Más filtros</Button></div></div>
+            <div className="mb-4 flex items-center justify-between"><div className="tab-list">{['Todos', 'Pendientes', 'Morosos'].map((item) => <button key={item} onClick={() => setTab(item)} className={tab === item ? 'selected' : ''}>{item}<span>{item === 'Todos' ? invoices.length : item === 'Pendientes' ? invoices.filter((invoice) => invoice.amount > invoice.paid).length : 4}</span></button>)}</div><span className="text-sm text-muted-foreground">Mostrando {visible.length} de {invoices.length} comprobantes</span></div>
+            <div className="table-card"><div className="table-scroll"><table><thead><tr><th className="w-10"><input type="checkbox" checked={selected.length === visible.length && visible.length > 0} onChange={() => setSelected(selected.length === visible.length ? [] : visible.map((invoice) => invoice.id))} aria-label="Seleccionar todas" /></th><th>Cliente</th><th>Comprobante</th><th>Vencimiento</th><th>Estado</th><th className="text-right">Importe</th><th className="text-right">Saldo</th><th /></tr></thead><tbody>{visible.map((invoice) => { const balance = invoice.amount - invoice.paid; const overdue = invoice.due < '02/09/2026'; return <tr key={invoice.id}><td><input type="checkbox" checked={selected.includes(invoice.id)} onChange={() => toggleInvoice(invoice.id)} aria-label={`Seleccionar ${invoice.number}`} /></td><td><div className="font-medium">{invoice.client}</div><div className="text-xs text-muted-foreground">CUIT {invoice.taxId}</div></td><td><span className="document">{invoice.number}</span></td><td>{invoice.due}<div className="text-xs text-muted-foreground">{overdue ? 'Vencida' : 'Por vencer'}</div></td><td><span className={`status ${overdue ? 'danger' : 'warning'}`}>{overdue ? 'Morosa' : 'Pendiente'}</span></td><td className="text-right font-medium">{money(invoice.amount)}</td><td className="text-right font-semibold text-danger">{money(balance)}</td><td><button className="icon-button" aria-label="Más opciones"><MoreHorizontal className="size-4" /></button></td></tr>})}</tbody></table></div><div className="table-footer"><span><strong>{selected.length}</strong> seleccionadas</span><span className="font-medium">Saldo seleccionado: <strong>{money(selectedInvoices.reduce((sum, invoice) => sum + invoice.amount - invoice.paid, 0))}</strong></span></div></div>
+          </div>
+        </section>
+      </div>
+      {showPayment && <div className="modal-backdrop"><div className="payment-modal"><div className="modal-header"><div><p className="eyebrow">Nuevo movimiento</p><h2>Registrar cobro</h2><p>Imputá uno o varios pagos a las facturas del cliente.</p></div><button onClick={() => setShowPayment(false)} className="icon-button"><X className="size-5" /></button></div><div className="modal-body"><label className="field-label">Cliente<select value={client} onChange={(event) => setClient(event.target.value)}><option>Todos los clientes</option><option>Blossom San Fernando (Diocla SRL)</option><option>Academia Nacional de Bellas Artes</option></select></label><div className="section-heading"><span>Medios de pago</span><button onClick={addPayment}>+ Agregar otro pago</button></div>{payments.map((payment, index) => <div className="payment-row" key={`${payment.method}-${index}`}><select value={payment.method} onChange={(event) => setPayments((current) => current.map((item, i) => i === index ? { ...item, method: event.target.value } : item))}>{methods.map((method) => <option key={method}>{method}</option>)}</select><div className="amount-input"><span>$</span><input type="number" value={payment.amount} onChange={(event) => setPayments((current) => current.map((item, i) => i === index ? { ...item, amount: Number(event.target.value) } : item))} /></div>{payments.length > 1 && <button onClick={() => setPayments((current) => current.filter((_, i) => i !== index))} className="remove-payment"><X className="size-4" /></button>}</div>)}<div className="section-heading mt-6"><span>Facturas a cancelar</span><button onClick={() => setSelected(visible.map((invoice) => invoice.id))}>Seleccionar todas</button></div><div className="invoice-picker">{selectedInvoices.length ? selectedInvoices.map((invoice) => <div className="picker-row" key={invoice.id}><input type="checkbox" checked onChange={() => toggleInvoice(invoice.id)} /><span>{invoice.number}</span><span className="ml-auto">{money(invoice.amount - invoice.paid)}</span></div>) : <p className="empty-picker">Seleccioná facturas desde la tabla para imputar el pago.</p>}</div><div className="allocation"><div><span>Pagado</span><strong>{money(paidIn)}</strong></div><div><span>Para cancelar</span><strong className="text-primary">{money(applied)}</strong></div><div><span>Remanente / saldo a favor</span><strong className={remainder ? 'text-success' : ''}>{money(remainder)}</strong></div></div></div><div className="modal-footer"><Button variant="outline" onClick={() => setShowPayment(false)}>Cancelar</Button><Button onClick={savePayment} disabled={!selectedInvoices.length || !paidIn}>{saved ? 'Cobro guardado' : 'Confirmar e imputar'}</Button></div></div></div>}
+    </main>
+  )
+}
+
+function Summary({ label, value, detail, tone, icon: Icon }: { label: string; value: string; detail: string; tone: string; icon: typeof CircleDollarSign }) { return <div className={`summary-card ${tone}`}><div className="summary-icon"><Icon className="size-5" /></div><div><p>{label}</p><strong>{value}</strong><span>{detail}</span></div></div> }

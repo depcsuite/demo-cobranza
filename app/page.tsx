@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import * as XLSX from 'xlsx'
 import {
   ArrowDownToLine,
   Bell,
@@ -68,6 +69,8 @@ export default function Page() {
   const [showPayment, setShowPayment] = useState(false)
   const [payments, setPayments] = useState<Payment[]>([{ method: 'Transferencia', amount: 610000 }])
   const [client, setClient] = useState('Todos los clientes')
+  const [dateFrom, setDateFrom] = useState('2026-08-01')
+  const [dateTo, setDateTo] = useState('2026-09-30')
   const [saved, setSaved] = useState(false)
 
   const visible = useMemo(() => invoices.filter((invoice) => {
@@ -90,6 +93,27 @@ export default function Page() {
   function updatePayment(index: number, changes: Partial<Payment>) {
     setPayments((current) => current.map((item, i) => i === index ? { ...item, ...changes } : item))
   }
+  function exportCollected() {
+    const collected = invoices.filter((invoice) => {
+      const [day, month, year] = invoice.due.split('/')
+      const paidDate = `${year}-${month}-${day}`
+      return invoice.paid > 0 && paidDate >= dateFrom && paidDate <= dateTo
+    })
+    const rows = collected.map((invoice) => ({
+      Cliente: invoice.client,
+      CUIT: invoice.taxId,
+      Comprobante: invoice.number,
+      Fecha: invoice.due,
+      Importe: invoice.amount,
+      Cobrado: invoice.paid,
+      Saldo: invoice.amount - invoice.paid,
+    }))
+    const worksheet = XLSX.utils.json_to_sheet(rows.length ? rows : [{ Mensaje: 'No hay cobros en el periodo seleccionado' }])
+    const workbook = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Cobros')
+    XLSX.writeFile(workbook, `cobros-${dateFrom}-${dateTo}.xlsx`)
+  }
+
   function savePayment() {
     let remaining = paidIn
     setInvoices((current) => current.map((invoice) => {
@@ -118,7 +142,7 @@ export default function Page() {
           <div className="mx-auto max-w-[1500px] p-5 md:p-8">
             <div className="mb-7 flex flex-wrap items-end justify-between gap-4"><div><div className="mb-2 flex items-center gap-2 text-sm text-muted-foreground"><span>Inicio</span><ChevronRight className="size-4" /><span className="text-primary">Cobranza</span></div><h1 className="text-3xl font-semibold tracking-tight">Cobranza</h1><p className="mt-1 text-sm text-muted-foreground">Gestioná pagos, imputaciones y saldos a favor de tus clientes.</p></div><Button onClick={() => setShowPayment(true)} className="h-11 gap-2"><HandCoins className="size-4" data-icon="inline-start" /> Registrar cobro</Button></div>
             <div className="summary-grid mb-6"><Summary label="Pendiente de cobro" value={money(totalDebt)} detail="6 facturas abiertas" tone="navy" icon={CircleDollarSign} /><Summary label="Cobrado este mes" value={money(1500000)} detail="+12,4% vs. mes anterior" tone="blue" icon={Check} /><Summary label="Saldos a favor" value={money(6100)} detail="3 remanentes activos" tone="gold" icon={WalletCards} /><Summary label="Clientes morosos" value="8" detail="Requieren seguimiento" tone="red" icon={Users} /></div>
-            <div className="filter-panel mb-6"><div className="flex flex-wrap items-center gap-3"><div className="search-wrap"><Search className="size-4 text-muted-foreground" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar cliente o factura..." /></div><select value={client} onChange={(event) => setClient(event.target.value)} className="filter-select"><option>Todos los clientes</option><option>Blossom San Fernando</option><option>The Coffee Store Quilmes</option></select><button className="date-filter"><CalendarDays className="size-4" /> 01/08/2026 — 30/09/2026</button><Button variant="outline" className="gap-2"><Filter className="size-4" data-icon="inline-start" /> Más filtros</Button></div></div>
+            <div className="filter-panel mb-6"><div className="flex flex-wrap items-center gap-3"><div className="search-wrap"><Search className="size-4 text-muted-foreground" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar cliente o factura..." /></div><select value={client} onChange={(event) => setClient(event.target.value)} className="filter-select"><option>Todos los clientes</option><option>Blossom San Fernando</option><option>The Coffee Store Quilmes</option></select><label className="date-filter"><CalendarDays className="size-4" /><span>Desde</span><input aria-label="Fecha desde" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} /><span>Hasta</span><input aria-label="Fecha hasta" type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></label><Button variant="outline" className="gap-2"><Filter className="size-4" data-icon="inline-start" /> Más filtros</Button><Button variant="outline" onClick={exportCollected} className="gap-2"><ArrowDownToLine className="size-4" data-icon="inline-start" /> Excel</Button></div></div>
             <div className="mb-4 flex items-center justify-between"><div className="tab-list">{['Todos', 'Pendientes', 'Morosos'].map((item) => <button key={item} onClick={() => setTab(item)} className={tab === item ? 'selected' : ''}>{item}<span>{item === 'Todos' ? invoices.length : item === 'Pendientes' ? invoices.filter((invoice) => invoice.amount > invoice.paid).length : 4}</span></button>)}</div><span className="text-sm text-muted-foreground">Mostrando {visible.length} de {invoices.length} comprobantes</span></div>
             <div className="table-card"><div className="table-scroll"><table><thead><tr><th className="w-10"><input type="checkbox" checked={selected.length === visible.length && visible.length > 0} onChange={() => setSelected(selected.length === visible.length ? [] : visible.map((invoice) => invoice.id))} aria-label="Seleccionar todas" /></th><th>Cliente</th><th>Comprobante</th><th>Vencimiento</th><th>Estado</th><th className="text-right">Importe</th><th className="text-right">Saldo</th><th /></tr></thead><tbody>{visible.map((invoice) => { const balance = invoice.amount - invoice.paid; const overdue = invoice.due < '02/09/2026'; return <tr key={invoice.id}><td><input type="checkbox" checked={selected.includes(invoice.id)} onChange={() => toggleInvoice(invoice.id)} aria-label={`Seleccionar ${invoice.number}`} /></td><td><div className="font-medium">{invoice.client}</div><div className="text-xs text-muted-foreground">CUIT {invoice.taxId}</div></td><td><span className="document">{invoice.number}</span></td><td>{invoice.due}<div className="text-xs text-muted-foreground">{overdue ? 'Vencida' : 'Por vencer'}</div></td><td><span className={`status ${overdue ? 'danger' : 'warning'}`}>{overdue ? 'Morosa' : 'Pendiente'}</span></td><td className="text-right font-medium">{money(invoice.amount)}</td><td className="text-right font-semibold text-danger">{money(balance)}</td><td><button className="icon-button" aria-label="Más opciones"><MoreHorizontal className="size-4" /></button></td></tr>})}</tbody></table></div><div className="table-footer"><span><strong>{selected.length}</strong> seleccionadas</span><span className="font-medium">Saldo seleccionado: <strong>{money(selectedInvoices.reduce((sum, invoice) => sum + invoice.amount - invoice.paid, 0))}</strong></span></div></div>
           </div>
